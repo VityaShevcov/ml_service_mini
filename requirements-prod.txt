@@ -1,0 +1,11 @@
+# Production requirements - minimal set for production deployment
+-r requirements.txt
+
+# Production server
+gunicorn>=21.2.0
+
+# Production monitoring (optional)
+prometheus-client>=0.17.0
+
+# Production caching (optional)
+redis>=5.0.0

@@ -1,0 +1,15 @@
+# Development requirements - additional tools for development
+-r requirements.txt
+
+# Development tools
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.7.0
+
+# Development utilities
+ipython>=8.0.0
+jupyter>=1.0.0
+pre-commit>=3.0.0

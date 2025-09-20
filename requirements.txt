@@ -1,0 +1,58 @@
+# Core Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic[email]==2.5.0
+pydantic-settings==2.1.0
+email-validator>=2.0.0
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.1
+psycopg2-binary==2.9.9  # PostgreSQL support (optional)
+
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+bcrypt==4.1.2
+
+# ML & AI
+torch>=2.6.0
+transformers>=4.50.0
+accelerate>=0.34.2
+bitsandbytes>=0.43.0  # For model quantization
+sentencepiece>=0.1.99  # For tokenization
+
+# UI Framework
+gradio>=4.0.0
+
+# HTTP & API
+httpx>=0.25.0
+requests==2.31.0
+aiofiles==23.2.1
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# System Monitoring
+psutil>=5.9.0
+
+# Utilities
+python-dotenv==1.0.0
+click==8.1.7
+rich==13.7.0  # For beautiful console output
+structlog>=23.1.0  # Structured logging
+
+# Development & Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+black>=23.0.0  # Code formatting
+flake8>=6.0.0  # Linting
+mypy>=1.7.0  # Type checking
+
+# Production (optional)
+gunicorn>=21.2.0  # WSGI server
+redis>=5.0.0  # Caching (optional)
+celery>=5.3.0  # Task queue (optional)
