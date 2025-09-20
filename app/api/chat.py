@@ -27,6 +27,7 @@ class ChatRequest(BaseModel):
     model: str = Field(..., description="Model to use (Gemma3 1B or Gemma3 12B)")
     max_length: Optional[int] = Field(None, ge=50, le=1000, description="Maximum response length")
     temperature: Optional[float] = Field(None, ge=0.1, le=2.0, description="Generation temperature")
+    use_ollama: Optional[bool] = Field(None, description="Force use of Ollama backend")
 
 
 class ChatResponse(BaseModel):
@@ -89,7 +90,8 @@ async def send_message(
         message=request.message,
         model_name=request.model,
         max_length=request.max_length,
-        temperature=request.temperature
+        temperature=request.temperature,
+        use_ollama=request.use_ollama
     )
     
     if not success:

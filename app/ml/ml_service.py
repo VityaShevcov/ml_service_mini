@@ -5,7 +5,6 @@ import time
 import torch
 from typing import Optional, Tuple, Dict, Any
 from transformers import GenerationConfig
-import requests
 
 from app.ml.model_loader import ModelLoader
 from app.utils.logging import get_logger
@@ -21,6 +20,20 @@ class MLService:
     def __init__(self):
         self.model_loader = ModelLoader()
         self.models_loaded = False
+        self.ollama_client = None
+
+        # Initialize Ollama client if enabled
+        if settings.use_ollama:
+            try:
+                from ollama import Client
+                self.ollama_client = Client(host=settings.ollama_base_url)
+                logger.info("ollama_client_initialized", host=settings.ollama_base_url)
+            except ImportError:
+                logger.error("ollama_import_failed", reason="ollama library not installed")
+                settings.use_ollama = False
+            except Exception as e:
+                logger.error("ollama_client_init_failed", error=str(e))
+                settings.use_ollama = False
         
     def initialize_models(self) -> Dict[str, bool]:
         """
@@ -81,7 +94,7 @@ class MLService:
     def get_available_models(self) -> list:
         """Get list of available models"""
         if settings.use_ollama:
-            return ["Gemma3 1B", "Gemma3 4B"]
+            return ["Gemma3 1B", "Gemma3 4B", "Llama3.2 1B"]
         loaded_models = self.model_loader.get_loaded_models()
         
         # Convert to user-friendly names
@@ -119,44 +132,17 @@ class MLService:
         Returns (success, response, processing_time_ms)
         """
         start_time = time.time()
-        
+
         # Demo mode - return mock responses
         if settings.demo_mode:
             return self._generate_mock_response(prompt, model_name, start_time)
-        
+
         try:
             # Normalize model name
             normalized_name = self._normalize_model_name(model_name)
             # If Ollama enabled, route generation to Ollama
             if settings.use_ollama:
-                start_time = time.time()
-                model_map = {
-                    "gemma3_1b": "gemma3:1b-instruct",
-                    "gemma3_4b": "gemma3:4b-instruct",
-                }
-                ollama_model = model_map.get(normalized_name, model_name)
-                try:
-                    resp = requests.post(
-                        f"{settings.ollama_base_url}/api/generate",
-                        json={
-                            "model": ollama_model,
-                            "prompt": prompt,
-                            "stream": False,
-                            "options": {
-                                "temperature": temperature or 0.7,
-                                "num_predict": max_length or settings.max_response_length,
-                            },
-                        },
-                        timeout=180,
-                    )
-                    if resp.status_code != 200:
-                        return False, f"Ollama error HTTP {resp.status_code}: {resp.text}", 0
-                    data = resp.json()
-                    text = data.get("response", "")
-                    processing_time = int((time.time() - start_time) * 1000)
-                    return True, self._clean_response(text), processing_time
-                except Exception as e:
-                    return False, f"Ollama request failed: {e}", 0
+                return self._generate_ollama_response(prompt, model_name, max_length, temperature)
             
             # Ensure requested model is loaded (sequential swap if needed)
             if not self.is_model_available(normalized_name):
@@ -389,6 +375,62 @@ class MLService:
         except Exception as e:
             logger.error("ml_service_shutdown_error", error=str(e))
     
+    def _generate_ollama_response(self, prompt: str, model_name: str, max_length: Optional[int], temperature: Optional[float]) -> Tuple[bool, str, int]:
+        """Generate response using Ollama backend"""
+        start_time = time.time()
+
+        if not self.ollama_client:
+            return False, "Ollama client not initialized", 0
+
+        # Map model names to Ollama model names
+        model_map = {
+            "gemma3_1b": "llama3.2:1b",  # Use llama as fallback since gemma3 not available
+            "gemma3_4b": "llama3.2:3b",  # Use llama as fallback
+        }
+
+        normalized_name = self._normalize_model_name(model_name)
+        ollama_model = model_map.get(normalized_name)
+
+        # Additional fallback logic
+        if not ollama_model:
+            if "1b" in normalized_name or "small" in normalized_name.lower():
+                ollama_model = "llama3.2:1b"
+            elif "4b" in normalized_name:
+                ollama_model = "llama3.2:3b"
+
+        if not ollama_model:
+            return False, f"Model {model_name} not supported by Ollama backend", 0
+
+        try:
+            # Generate response using Ollama client with optimized parameters
+            response = self.ollama_client.generate(
+                model=ollama_model,
+                prompt=prompt,
+                options={
+                    "num_predict": max_length or min(settings.max_response_length, 128),
+                    "temperature": temperature or 0.7,
+                    "top_k": 30,
+                    "top_p": 0.85,
+                    "num_ctx": 1024,  # Balanced context size
+                    "num_thread": -1,  # Use all available threads
+                    "repeat_penalty": 1.1,
+                    "repeat_last_n": 32,
+                }
+            )
+
+            generated_text = response.get('response', '').strip()
+            processing_time = int((time.time() - start_time) * 1000)
+
+            logger.info("ollama_response_generated",
+                       model=model_name,
+                       processing_time_ms=processing_time)
+
+            return True, self._clean_response(generated_text), processing_time
+
+        except Exception as e:
+            logger.error("ollama_generation_failed", model=model_name, error=str(e))
+            return False, f"Ollama generation failed: {str(e)}", int((time.time() - start_time) * 1000)
+
     def _generate_mock_response(self, prompt: str, model_name: str, start_time: float) -> Tuple[bool, str, int]:
         """Generate mock response for demo mode"""
         import random

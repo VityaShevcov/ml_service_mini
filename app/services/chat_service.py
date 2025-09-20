@@ -30,27 +30,45 @@ class ChatService:
         message: str,
         model_name: str,
         max_length: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        use_ollama: Optional[bool] = None
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Send a message and get AI response with billing integration
         Returns (success, response_or_error, metadata)
         """
         start_time = time.time()
-        
+
         try:
             # Validate inputs
             if not message.strip():
                 return False, "Message cannot be empty", {}
-            
+
             if len(message) > 2000:
                 return False, "Message too long (max 2000 characters)", {}
-            
+
+            # Determine which ML service to use
+            use_ollama_backend = use_ollama if use_ollama is not None else True  # Default to Ollama for speed
+            ml_service_to_use = self.ml_service
+
+            # If use_ollama differs from current settings, create a new instance
+            if use_ollama_backend != getattr(self.ml_service, '_use_ollama', None):
+                from config import settings
+                # Temporarily override settings for this request
+                original_use_ollama = settings.use_ollama
+                settings.use_ollama = use_ollama_backend
+
+                try:
+                    ml_service_to_use = MLService()
+                    ml_service_to_use._use_ollama = use_ollama_backend
+                finally:
+                    settings.use_ollama = original_use_ollama
+
             # Check if ML service is ready
-            if not self.ml_service.models_loaded:
+            if not ml_service_to_use.models_loaded:
                 # Try to initialize
                 try:
-                    results = self.ml_service.initialize_models()
+                    results = ml_service_to_use.initialize_models()
                     if not any(results.values()):
                         return False, "ML service is not available", {}
                 except Exception as e:
@@ -58,17 +76,17 @@ class ChatService:
                     return False, "Failed to initialize ML service", {}
             
             # Ensure requested model is available; try to load it on demand
-            if not self.ml_service.is_model_available(model_name):
-                tried = self.ml_service.reload_model(model_name)
-                if not tried or not self.ml_service.is_model_available(model_name):
+            if not ml_service_to_use.is_model_available(model_name):
+                tried = ml_service_to_use.reload_model(model_name)
+                if not tried or not ml_service_to_use.is_model_available(model_name):
                     # Fallback to small model if present
                     fallback = "Gemma3 1B"
-                    if self.ml_service.is_model_available(fallback) or self.ml_service.reload_model(fallback):
+                    if ml_service_to_use.is_model_available(fallback) or ml_service_to_use.reload_model(fallback):
                         model_name = fallback
                     else:
-                        available_models = self.ml_service.get_available_models()
+                        available_models = ml_service_to_use.get_available_models()
                         return False, f"Model '{model_name}' not available. Available: {available_models}", {}
-            
+
             # Get model cost
             model_cost = self.billing_service.get_model_cost(model_name)
             
@@ -93,12 +111,12 @@ class ChatService:
                 return False, credit_message, {"cost": model_cost, "user_credits": user.credits}
             
             # Generate AI response
-            logger.info("generating_chat_response", 
-                       user_id=user.id, 
+            logger.info("generating_chat_response",
+                       user_id=user.id,
                        model=model_name,
                        message_length=len(message))
-            
-            success, ai_response, processing_time = self.ml_service.generate_response(
+
+            success, ai_response, processing_time = ml_service_to_use.generate_response(
                 prompt=message,
                 model_name=model_name,
                 max_length=max_length,

@@ -93,7 +93,8 @@ class ChatInterface:
                 f"{self.api_base_url}/chat/message",
                 json={
                     "message": message.strip(),
-                    "model": model
+                    "model": model,
+                    "use_ollama": True  # Force Ollama for speed
                 },
                 headers={"Authorization": f"Bearer {self.current_token}"},
                 timeout=30  # Longer timeout for ML generation
@@ -268,7 +269,7 @@ class ChatInterface:
                             label="Select Model",
                             info="Gemma3 1B: 1 credit, Gemma3 4B: 3 credits"
                         )
-                        use_ollama = gr.Checkbox(label="Use Ollama backend", value=False)
+                        use_ollama = gr.Checkbox(label="Use Ollama backend", value=True)
                         clear_btn = gr.Button("Clear Chat", variant="secondary")
                     
                     model_recommendations = gr.Markdown(

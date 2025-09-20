@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     # ML Models
     model_cache_dir: str = "./models"
-    max_response_length: int = 512
+    max_response_length: int = 128  # Balanced for speed and quality
     # Real Gemma 3 IT models
     gemma3_1b_model: str = "google/gemma-3-1b-it"
     gemma3_4b_model: str = "google/gemma-3-4b-it"
