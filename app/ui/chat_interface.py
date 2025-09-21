@@ -76,10 +76,17 @@ class ChatInterface:
         except Exception:
             return 0
     
-    def send_message(self, message: str, model: str, history: List[List[str]]) -> Tuple[List[List[str]], str, str]:
-        """
-        Send message to chat API
-        Returns (updated_history, credits_info, status_message)
+    def send_message(
+        self,
+        message: str,
+        model: str,
+        history: List[List[str]]
+    ) -> Tuple[List[List[str]], str, str, Optional[int]]:
+        """Send message to chat API and return response details.
+
+        Returns (updated_history, credits_info, status_message, remaining_credits)
+        where ``remaining_credits`` will be ``None`` if the value cannot be
+        determined from the API response.
         """
         try:
             if not self.current_token:
@@ -99,66 +106,100 @@ class ChatInterface:
                 headers={"Authorization": f"Bearer {self.current_token}"},
                 timeout=30  # Longer timeout for ML generation
             )
-            
+
             if response.status_code == 200:
                 data = response.json()
-                
+
                 if data.get("success"):
                     # Add to history
                     ai_response = data.get("message", "No response")
                     credits_charged = data.get("credits_charged", 0)
-                    remaining_credits = data.get("remaining_credits", 0)
+                    remaining_credits = data.get("remaining_credits")
+                    if remaining_credits is None and self.current_user is not None:
+                        remaining_credits = self.current_user.get("credits")
                     processing_time = data.get("processing_time_ms", 0)
                     model_used = data.get("model_used", model)
-                    
+
                     # Update history - Gradio 5.x format
                     new_history = history + [
                         {"role": "user", "content": message},
                         {"role": "assistant", "content": ai_response}
                     ]
-                    
+
                     # Create credits info
-                    credits_info = f"💳 Credits: {remaining_credits} (-{credits_charged})"
-                    
+                    credits_display_value = (
+                        f"{remaining_credits}" if remaining_credits is not None else "unknown"
+                    )
+                    credits_info = (
+                        f"💳 Credits: {credits_display_value} (-{credits_charged})"
+                    )
+
                     # Create status message
                     status_msg = f"✅ Response generated using {model_used} in {processing_time}ms"
-                    
-                    return new_history, credits_info, status_msg
+
+                    if remaining_credits is not None:
+                        # Keep local cache in sync for UI updates without extra requests
+                        if self.current_user is not None:
+                            self.current_user["credits"] = remaining_credits
+
+                    return new_history, credits_info, status_msg, remaining_credits
                 else:
                     error_msg = data.get("message", "Unknown error")
-                    return history, "❌ Generation failed", f"Error: {error_msg}"
-            
+                    return history, "❌ Generation failed", f"Error: {error_msg}", None
+
             elif response.status_code == 402:
                 # Insufficient credits
                 try:
                     error_data = response.json()
                     error_msg = error_data.get("detail", "Insufficient credits")
+                    remaining_credits = error_data.get("remaining_credits")
                 except:
                     error_msg = "Insufficient credits"
-                
-                return history, "💳 Insufficient credits", f"❌ {error_msg}"
-            
+                    remaining_credits = None
+
+                return history, "💳 Insufficient credits", f"❌ {error_msg}", remaining_credits
+
             elif response.status_code == 503:
                 # Service unavailable
-                return history, "🔄 Service loading", "ML service is initializing, please try again in a moment"
-            
+                return (
+                    history,
+                    "🔄 Service loading",
+                    "ML service is initializing, please try again in a moment",
+                    None,
+                )
+
             else:
                 try:
                     error_data = response.json()
                     error_msg = error_data.get("detail", f"HTTP {response.status_code}")
                 except:
                     error_msg = f"HTTP {response.status_code}"
-                
-                return history, "❌ Error", f"Error: {error_msg}"
-                
+
+                return history, "❌ Error", f"Error: {error_msg}", None
+
         except requests.exceptions.Timeout:
-            return history, "⏱️ Timeout", "Request timed out. The model might be loading or busy."
-        
+            return (
+                history,
+                "⏱️ Timeout",
+                "Request timed out. The model might be loading or busy.",
+                None,
+            )
+
         except requests.exceptions.RequestException as e:
-            return history, "🔌 Connection error", f"Connection error: {str(e)}"
-        
+            return (
+                history,
+                "🔌 Connection error",
+                f"Connection error: {str(e)}",
+                None,
+            )
+
         except Exception as e:
-            return history, "❌ Unexpected error", f"Unexpected error: {str(e)}"
+            return (
+                history,
+                "❌ Unexpected error",
+                f"Unexpected error: {str(e)}",
+                None,
+            )
     
     def add_credits(self, amount: int) -> Tuple[str, str]:
         """
@@ -345,20 +386,28 @@ class ChatInterface:
             def handle_send_message(message, model, history, token, use_ol):
                 if token:
                     self.current_token = token
-                
+
                 # Pass model as is; backend switches by config
-                new_history, credits_info, status = self.send_message(message, model, history)
-                
-                # Update credits display
-                credits = self.get_user_credits()
-                
-                return {
+                new_history, credits_info, status, remaining = self.send_message(
+                    message,
+                    model,
+                    history
+                )
+
+                updates = {
                     chatbot: new_history,
                     msg_input: "",
                     credits_display: credits_info,
-                    current_credits: credits,
                     status_message: status
                 }
+
+                if remaining is not None:
+                    updates[current_credits] = remaining
+                else:
+                    # Leave current balance untouched when we cannot infer the value
+                    updates[current_credits] = gr.update()
+
+                return updates
             
             def handle_add_credits(amount, token):
                 if token:
@@ -454,5 +503,5 @@ class ChatInterface:
             chat_interface.chatbot = chatbot
             chat_interface.credits_display = credits_display
             chat_interface.status_message = status_message
-        
+
         return chat_interface
