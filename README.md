@@ -5,10 +5,11 @@ A comprehensive chat service powered by Gemma3 models with integrated billing, u
 ## 🌟 Features
 
 ### 💬 Chat Functionality
-- **Multiple AI Models**: Gemma3 1B and 12B models with different pricing
+- **Multiple AI Models**: Gemma3 1B/4B with Llama3.2 fallback and different pricing
 - **Real-time Chat**: Interactive Gradio interface with model selection
 - **Response Caching**: Intelligent caching for improved performance
 - **Memory Optimization**: Advanced memory management and lazy loading
+- **Ollama Integration**: Fast local LLM serving for optimal performance
 
 ### 💰 Billing System
 - **Credit-based Billing**: Pay-per-use model with different costs per model
@@ -92,9 +93,9 @@ python startup.py --skip-init
 After startup, the following services will be available:
 
 - **Gradio Interface**: http://localhost:7861 (Main user interface)
-- **API Server**: http://localhost:8000 (REST API)
-- **API Documentation**: http://localhost:8000/docs (Swagger UI)
-- **Health Check**: http://localhost:8000/health (System health)
+- **API Server**: http://localhost:7860 (REST API)
+- **API Documentation**: http://localhost:7860/docs (Swagger UI)
+- **Health Check**: http://localhost:7860/health (System health)
 
 ## 👤 Default Admin Credentials
 
@@ -155,11 +156,18 @@ ml-chat-billing-service/
 │   ├── ui/                  # Gradio interfaces
 │   └── utils/               # Utility functions
 ├── tests/                   # Test suites
-├── alembic/                 # Database migrations
-├── config.py                # Configuration
+│   ├── integration/         # API and integration tests
+│   ├── scripts/             # Test scripts and utilities
+│   └── unit/                # Unit tests
+├── scripts/                 # Utility scripts
+├── migrations/              # Database migrations (Alembic)
+├── logs/                    # Application logs
+├── config.py                # Configuration settings
 ├── main.py                  # FastAPI application
 ├── startup.py               # Startup script
-└── requirements.txt         # Dependencies
+├── requirements.txt         # Dependencies
+├── Dockerfile               # Docker configuration
+└── docker-compose.yml       # Docker Compose setup
 ```
 
 ### Key Components
@@ -199,14 +207,18 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=30
 
 # Server
-HOST=0.0.0.0
-PORT=8000
-DEBUG=false
+HOST=127.0.0.1
+PORT=7860
+DEBUG=true
 
 # ML Models
-GEMMA3_1B_COST=10
-GEMMA3_12B_COST=50
-MAX_RESPONSE_LENGTH=500
+GEMMA3_1B_COST=1
+GEMMA3_4B_COST=3
+MAX_RESPONSE_LENGTH=128
+
+# Ollama Integration
+USE_OLLAMA=true
+OLLAMA_BASE_URL=http://127.0.0.1:11434
 
 # Logging
 LOG_LEVEL=INFO
@@ -214,12 +226,16 @@ LOG_LEVEL=INFO
 
 ### Model Configuration
 
-The service supports two Gemma3 models:
+The service supports multiple AI models with intelligent fallback:
 
-- **Gemma3 1B**: Faster, lower cost (10 credits per message)
-- **Gemma3 12B**: Higher quality, higher cost (50 credits per message)
+- **Gemma3 1B** → Llama3.2:1B (1 credit per message)
+- **Gemma3 4B** → Llama3.2:3B (3 credits per message)
 
-Models are loaded on-demand to optimize memory usage.
+**Backend Options:**
+- **Ollama** (Recommended): Fast local serving for optimal performance
+- **HuggingFace**: Cloud-based models with quantization support
+
+Models are loaded on-demand with intelligent memory management.
 
 ## 🧪 Testing
 
@@ -236,14 +252,20 @@ pytest tests/unit/
 # Integration tests only
 pytest tests/integration/
 
+# Test scripts only
+pytest tests/scripts/
+
+# Run all tests
+pytest tests/
+
 # With coverage
 pytest --cov=app tests/
 ```
 
 ### Test Categories
-- **Unit Tests**: Individual component testing
-- **Integration Tests**: API endpoint testing
-- **Performance Tests**: Load and performance testing
+- **Unit Tests** (`tests/unit/`): Individual component testing
+- **Integration Tests** (`tests/integration/`): API endpoint and system testing
+- **Test Scripts** (`tests/scripts/`): Utility scripts for testing specific functionality
 
 ## 📊 Monitoring & Observability
 
@@ -300,40 +322,38 @@ python startup.py
 4. **Set up SSL/TLS certificates**
 5. **Configure monitoring and logging**
 
-### Docker Deployment (Optional)
-```dockerfile
-# Dockerfile example
-FROM python:3.9-slim
+### Docker Deployment
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-
-COPY . .
-EXPOSE 8000 7861
-
-CMD ["python", "startup.py"]
+# Or build and run individual services
+docker build -t ml-chat-service .
+docker run -p 7860:7860 -p 7861:7861 ml-chat-service
 ```
 
 ## 📈 Performance Optimization
 
 ### Memory Management
-- Lazy model loading
-- LRU model caching
-- Automatic memory cleanup
-- GPU memory optimization
+- Lazy model loading with on-demand initialization
+- LRU model caching with intelligent eviction
+- Automatic memory cleanup and garbage collection
+- GPU memory optimization with device mapping
+- CPU offloading for large models
 
 ### Response Optimization
-- Response caching with TTL
-- Request deduplication
-- Batch processing support
-- Connection pooling
+- Response caching with TTL for frequently asked questions
+- Request deduplication to prevent duplicate processing
+- Batch processing support for multiple requests
+- Connection pooling for database and external services
+- Optimized token generation with early stopping
 
 ### Monitoring & Alerts
-- Real-time performance monitoring
-- Automated optimization triggers
-- Resource usage alerts
-- Performance recommendations
+- Real-time performance monitoring with structured logging
+- Automated optimization triggers based on system metrics
+- Resource usage alerts (CPU, memory, disk)
+- Performance recommendations based on usage patterns
+- Health checks with automatic recovery
 
 ## 🤝 Contributing
 

@@ -2,28 +2,63 @@
 
 This document provides a comprehensive overview of the ML Chat Billing Service architecture, design decisions, and implementation details.
 
+## 📂 Project Structure
+
+```
+ml-chat-billing-service/
+├── app/
+│   ├── api/                 # FastAPI endpoints
+│   ├── ml/                  # ML model management
+│   ├── models/              # Database models
+│   ├── services/            # Business logic services
+│   ├── ui/                  # Gradio interfaces
+│   └── utils/               # Utility functions
+├── tests/                   # Test suites
+│   ├── integration/         # API and integration tests
+│   ├── scripts/             # Test scripts and utilities
+│   └── unit/                # Unit tests
+├── scripts/                 # Utility scripts
+├── migrations/              # Database migrations (Alembic)
+├── logs/                    # Application logs
+├── config.py                # Configuration settings
+├── main.py                  # FastAPI application
+├── startup.py               # Startup script
+├── requirements.txt         # Dependencies
+├── Dockerfile               # Docker configuration
+└── docker-compose.yml       # Docker Compose setup
+```
+
 ## 📊 System Overview
 
 The ML Chat Billing Service is a microservices-based application that provides AI-powered chat functionality with integrated billing and user management.
+
+### Key Features
+- **Multi-Backend AI**: Support for both Ollama (local) and HuggingFace (cloud) models
+- **Intelligent Fallbacks**: Automatic fallback to alternative models when primary models unavailable
+- **Performance Optimized**: Lazy loading, caching, and memory optimization
+- **Comprehensive Testing**: Unit, integration, and script-based testing
+- **Docker Ready**: Complete containerization support
+- **Monitoring**: Real-time performance monitoring and health checks
 
 ### High-Level Architecture
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Gradio UI     │    │   FastAPI       │    │   Database      │
-│   (Frontend)    │◄──►│   (Backend)     │◄──►│   (PostgreSQL)  │
-│   Port: 7861    │    │   Port: 8000    │    │   Port: 5432    │
+│   (Frontend)    │◄──►│   (Backend)     │◄──►│   (SQLite)      │
+│   Port: 7861    │    │   Port: 7860    │    │   Local File    │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
          │                       │                       │
          │              ┌─────────────────┐              │
-         │              │   ML Models     │              │
-         └──────────────►│   (Gemma3)     │              │
-                        │   GPU/CPU       │              │
+         │              │  ML Backend     │              │
+         └──────────────►│  (Ollama/Local) │              │
+                        │   Fast GPU/CPU  │              │
                         └─────────────────┘              │
                                  │                       │
                         ┌─────────────────┐              │
-                        │   Monitoring    │              │
-                        │   & Caching     │◄─────────────┘
+                        │   Alternative   │◄─────────────┘
+                        │   HuggingFace   │
+                        │   (Fallback)    │
                         └─────────────────┘
 ```
 
@@ -106,20 +141,27 @@ class ModelLoader:
 #### ML Service (`ml_service.py`)
 ```python
 class MLService:
-    - generate_response()  # Text generation with model selection
-    - get_available_models() # Available model listing
+    - generate_response()  # Text generation with Ollama/HuggingFace
+    - get_available_models() # Available model listing with fallbacks
     - get_model_cost()     # Cost calculation per model
-    - initialize_models()  # Model initialization
+    - initialize_models()  # Model initialization with lazy loading
+    - reload_model()       # Dynamic model switching
+    - get_system_status()  # System health and performance metrics
+
+# Supported Backends:
+- Ollama (Local): Fast inference with llama3.2 fallback
+- HuggingFace: Cloud models with quantization support
 ```
 
-#### Optimized ML Service (`optimized_ml_service.py`)
+#### Model Loader (`model_loader.py`)
 ```python
-class OptimizedMLService:
-    - Lazy loading         # On-demand model loading
-    - LRU caching         # Model cache management
-    - Response caching    # Prompt/response caching
-    - Memory management   # Automatic cleanup
-    - Performance monitoring # Usage tracking
+class ModelLoader:
+    - load_gemma3_1b()     # Load 1B parameter model
+    - load_gemma3_4b()     # Load 4B parameter model
+    - unload_model()       # Memory cleanup
+    - get_model_info()     # Model metadata
+    - optimize_memory()    # Memory optimization
+    - get_memory_usage()   # Memory statistics
 ```
 
 ### 4. Data Layer (`app/models/`)
@@ -218,17 +260,25 @@ class MemoryManager:
 
 ### Model Configuration
 ```python
-# Gemma3 1B Configuration
-- Parameters: ~1 billion
-- Memory: ~2-4GB RAM
-- Cost: 10 credits per message
-- Quantization: Optional int8
+# Primary Models (Gemma3 with Ollama backend)
+- Gemma3 1B → Llama3.2:1B
+  - Parameters: ~1 billion
+  - Memory: ~2GB RAM
+  - Cost: 1 credit per message
+  - Backend: Ollama (local)
 
-# Gemma3 12B Configuration  
-- Parameters: ~12 billion
-- Memory: ~24-48GB RAM or 12-24GB VRAM
-- Cost: 50 credits per message
-- Quantization: Automatic int8 for memory efficiency
+- Gemma3 4B → Llama3.2:3B
+  - Parameters: ~3 billion
+  - Memory: ~4GB RAM
+  - Cost: 3 credits per message
+  - Backend: Ollama (local)
+
+# Fallback Models (HuggingFace)
+- HuggingFace Transformers
+  - Quantization: int8/4-bit available
+  - Memory: Optimized with CPU offloading
+  - Cost: Same as primary models
+  - Backend: Cloud-based
 ```
 
 ## 💾 Database Design

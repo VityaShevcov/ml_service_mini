@@ -27,6 +27,11 @@ env/
 ENV/
 ml-chat-env/
 .venv/
+# Windows virtual environments
+Scripts/
+Lib/
+Include/
+pyvenv.cfg
 
 # Database files
 *.db
@@ -62,6 +67,7 @@ Thumbs.db
 
 # Docker
 .dockerignore
+docker-compose.override.yml
 
 # Backup files
 backups/
@@ -102,6 +108,20 @@ coverage.xml
 # Celery
 celerybeat-schedule
 celerybeat.pid
+
+# Test artifacts
+test_results/
+.coverage.*
+htmlcov/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
 
 # SageMath parsed files
 *.sage.py
